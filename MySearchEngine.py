@@ -5,6 +5,7 @@ import sys
 import os
 import re
 import copy
+import argparse
 import numpy as np
 import pandas as pd
 from itertools import chain
@@ -64,23 +65,37 @@ def Stemming(doc_list):
         i += 1
     return output
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='search engine')
+    parser.add_argument('--task', required=True, help='the task of the engine')
+    parser.add_argument('--input', required=True, help='collection dir for index')
+    parser.add_argument('--output', required=True, help='output folder path')
+    parser.add_argument('--stopword', type=str, default='stopwords.txt')
+    parser.add_argument('--keyword', nargs="*",type=str,default=[])
+    parser.add_argument('--k', type=int, default=5)
+
+    return parser.parse_args()
+
 
 # main function for this engine
 def main():
-
+    args = parse_args()
     # Input argument in the terminal
-    task = sys.argv[1]
-    arg1 = sys.argv[2]
-    arg2 = sys.argv[3]
-    arg3 = sys.argv[4:]
-
+    task = args.task
+    stopword = args.stopword
+    input_dir = args.input
+    output_dir = args.output
+    keyword_list = args.keyword
+    k_doc = args.k
+    if not os.path.isdir(output_dir ):
+        os.makedirs(output_dir )
     # Task A: document indexing
     if task == 'index':
         print("===START TO INDEX===")
         # read the documents as a dictionary
         collect_doc = {}
-        for doc in os.listdir(arg1):
-            fullpath = os.path.join(arg1, doc)
+        for doc in os.listdir(input_dir):
+            fullpath = os.path.join(input_dir, doc)
             # read the file
             with open(fullpath, 'r', encoding='utf8') as infile:
                 # remove ',' and '.txt' of filename and set as the key for the document
@@ -90,9 +105,9 @@ def main():
         doc_tokenized = {}
         for key in collect_doc.keys():
             step1 = tokeniser(collect_doc[key])
-            step2 = rm_stopword(step1, arg3[0])
+            step2 = rm_stopword(step1, stopword)
             step3 = Stemming(step2)
-            step4 = rm_stopword(step3, arg3[0])
+            step4 = rm_stopword(step3, stopword)
             doc_tokenized[key] = step4
 
         # count document freq (Counter funtion return a dictionary for the frequency of the items in the list)
@@ -117,10 +132,8 @@ def main():
             tfidf_output.append(text)
 
         # save indexing output
-        index_path = os.path.join(arg2, "./index.txt")
+        index_path = os.path.join(output_dir , "./index.txt")
         # if the index_dir does not exist, create a new directory
-        if not os.path.isdir(arg2):
-            os.makedirs(arg2)
         out_file = open(index_path, 'w', encoding='utf8')
         out_file.write('\n'.join(tfidf_output))
         out_file.close()
@@ -128,14 +141,17 @@ def main():
 
     # Task B: Query Processing (Vector space model)
     elif task == 'search':
+        if len(keyword_list) ==0:
+            print('Error: No keyword provided!')
+            return None
         print('===START TO SEARCH===')
         # loading index file
-        index_path = os.path.join(arg1, "./index.txt")
+        index_path = os.path.join(input_dir, "./index.txt")
         with open(index_path, 'r', encoding='utf8') as infile:
             tfidf_output1 = infile.readlines()
 
         # normalize the query
-        query = ' '.join(arg3)
+        query = ' '.join(keyword_list)
         step1 = tokeniser(query)
         step3 = Stemming(step1)
         q_final = step3
@@ -203,9 +219,9 @@ def main():
             df_final = df_cosine.sort_values(by=['score'], ascending=False).reset_index(drop=True)
 
             # finalize the results for output (only show top-k result)
-            top_k = int(arg2)
-            print('Below are the top-'+str(arg2), 'results:')
-            out_file = open("./query_output.txt", 'w', encoding='utf8')
+            top_k = int(k_doc)
+            print('Below are the top-'+str(k_doc), 'results:')
+            out_file = open(output_dir + "/query_output.txt", 'w', encoding='utf8')
             for index, row in df_final.iterrows():
                 result = row["doc"] + ',' + str(round(row["score"], 3))
                 if index < top_k:
@@ -215,14 +231,17 @@ def main():
 
     # Task C: Query Processing (Search and ranked based on Probabilistic Model)
     elif task == 'search_p':
+        if len(keyword_list) ==0:
+            print('Error: No keyword provided!')
+            return None
         print('===START TO SEARCH (Probabilistic Model)===')
         # loading index file
-        index_path = os.path.join(arg1, "./index.txt")
+        index_path = os.path.join(input_dir, "./index.txt")
         with open(index_path, 'r', encoding='utf8') as infile:
             tfidf_output1 = infile.readlines()
 
         # query processing
-        query = ' '.join(arg3)
+        query = ' '.join(keyword_list)
         step1 = tokeniser(query)
         step3 = Stemming(step1)
         q_final = step3
@@ -271,11 +290,11 @@ def main():
                 final_score[y] = sum(match_doc[y])
 
             # finalize the results for output
-            top_k = int(arg2)
+            top_k = int(k_doc)
             df_p = pd.DataFrame(list(final_score.items()), columns=['doc', 'score'])
             df_p2 = df_p.sort_values(by=['score'], ascending=False).reset_index(drop=True)
-            print('Below are the top-' + str(arg2), 'results:')
-            out_file = open("./search_prop_model.txt", 'w', encoding='utf8')
+            print('Below are the top-' + str(k_doc), 'results:')
+            out_file = open(output_dir+"/search_prop_model.txt", 'w', encoding='utf8')
             for index, row in df_p2.iterrows():
                 result = row["doc"] + ',' + str(round(row["score"], 3))
                 if index < top_k:
